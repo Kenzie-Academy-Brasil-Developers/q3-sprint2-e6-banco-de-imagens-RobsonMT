@@ -1,38 +1,20 @@
-from distutils import extension
-from http import HTTPStatus
-from http.client import BAD_REQUEST, CONFLICT, CREATED, UNSUPPORTED_MEDIA_TYPE
-import json
 import os
 import os.path
-from typing_extensions import IntVar
-from zipfile import Path
 from flask import (
-    Flask, request, jsonify, send_from_directory
+    Flask, request, send_file, send_from_directory
+)
+
+from .kenzie import (
+    create_directories, save_file, verify_exist_dirs,
+    verify_exist_file_name,list_directorie, zip_path,
+    filter_file
 )
 
 app = Flask(__name__)
 
-# app.config['MAX_CONTENT_LENGTH'] = 1024 * 1024
-# app.config['UPLOAD_EXTENSIONS'] = ['.jpg', '.png', '.gif']
-
 FILES_DIRECTORY= os.getenv('FILES_DIRECTORY')
 MAX_CONTENT_LENGTH= int(os.getenv('MAX_CONTENT_LENGTH'))
 ALLOWED_EXTENSIONS= os.getenv('ALLOWED_EXTENSIONS')
-
-def write_file(extension ,file_name):
-    with open(f"./files/{extension}/{file_name}", "wb") as f:
-        f.write(request.data)
-
-def create_directories():
-    directories = ["./files", "./files/jpg", "./files/gif", "./files/png"]
-    [os.system(f"mkdir {dir}") for dir in directories] 
-
-def verify_exist_dirs():
-    directories = ["./files", "./files/jpg", "./files/gif", "./files/png"]
-    all(dir for dir in directories if os.path.isdir(dir))
-
-def verify_exist_file_name(extension, file_name):
-   return os.path.exists(f"{FILES_DIRECTORY}/{extension}/{file_name}")
 
 try:
     if not verify_exist_dirs(): 
@@ -66,5 +48,73 @@ def upload():
     except (AttributeError, KeyError):
         return {"error": "file not found"}, 400
     else:
-        write_file(extension, file_name)
+        save_file(file, extension)
         return {"message": "upload successful"}, 201
+
+
+@app.get("/files")
+def list_files():
+
+    gif_files = list_directorie("gif")
+    jpg_files = list_directorie("jpg")
+    png_files = list_directorie("png")
+
+    return {"gif": gif_files, "jpg": jpg_files, "png": png_files}, 200
+
+
+@app.get("/files/<extension>")
+def list_files_by_extension(extension:str):
+
+    try:
+        if not extension in ALLOWED_EXTENSIONS:
+            raise KeyError
+    except KeyError:
+        return {"error": "file extention not found"}, 400
+    else:
+        files_by_extension = list_directorie(extension)
+
+        return {f"{extension}": files_by_extension}, 200
+
+
+@app.get("/download/<file_name>")
+def download(file_name:str):
+
+    extension = file_name[-3::]
+    filtered_file = filter_file(extension,file_name)
+    directory = filtered_file[:11:]
+
+    try:
+        if not filtered_file: 
+            raise NameError
+    except NameError:
+        return {"error": "file not found"}, 404
+    else:
+        return send_from_directory(
+        directory=f".{directory}",
+        path=file_name, 
+        as_attachment=True
+        ), 200
+
+
+@app.get("/download-zip")
+def download_dir_as_zip():
+    extension_format = request.args.get("format")
+    try:
+        if not extension_format in ALLOWED_EXTENSIONS:
+            raise NameError
+        if not extension_format:
+            raise TypeError
+    except NameError:
+        return {"error": "file name not found"}, 404
+    except TypeError:
+        return {"error": "file not found"}, 400
+    else:
+        data = zip_path(extension_format)
+
+        return send_file(
+        data,
+        mimetype='application/zip',
+        as_attachment=True,
+        attachment_filename=f"{extension_format}.zip"
+        ), 200
+    
