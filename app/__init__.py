@@ -12,7 +12,6 @@ from .kenzie import (
 
 app = Flask(__name__)
 
-FILES_DIRECTORY= os.getenv('FILES_DIRECTORY')
 MAX_CONTENT_LENGTH= int(os.getenv('MAX_CONTENT_LENGTH'))
 ALLOWED_EXTENSIONS= os.getenv('ALLOWED_EXTENSIONS')
 
@@ -30,12 +29,12 @@ def upload():
 
     try:
         file_name = file.filename
-        extension = file.filename[-3::]
-
-        if size > MAX_CONTENT_LENGTH:
-            raise FileExistsError
+        extension = file_name.split(".")[1]
+  
         if not extension in ALLOWED_EXTENSIONS:
             raise TypeError
+        if size > MAX_CONTENT_LENGTH:
+            raise FileExistsError
         if verify_exist_file_name(extension, file_name): 
             raise NameError
 
@@ -79,7 +78,7 @@ def list_files_by_extension(extension:str):
 @app.get("/download/<file_name>")
 def download(file_name:str):
 
-    extension = file_name[-3::]
+    extension = file_name.split(".")[1]
     filtered_file = filter_file(extension,file_name)
     directory = filtered_file[:11:]
 
@@ -96,25 +95,26 @@ def download(file_name:str):
         ), 200
 
 
-@app.get("/download-zip")
-def download_dir_as_zip():
-    extension_format = request.args.get("format")
-    try:
-        if not extension_format in ALLOWED_EXTENSIONS:
-            raise NameError
-        if not extension_format:
-            raise TypeError
-    except NameError:
-        return {"error": "file name not found"}, 404
-    except TypeError:
-        return {"error": "file not found"}, 400
-    else:
-        data = zip_path(extension_format)
+@app.get("/download-zip")    
+def download_dir_as_query():
+    file_extension = request.args.get("file_extension")
+    compression_ratio = request.args.get("compression_ratio", default=6)
 
-        return send_file(
-        data,
-        mimetype='application/zip',
-        as_attachment=True,
-        attachment_filename=f"{extension_format}.zip"
-        ), 200
+    try:
+        if not file_extension in ALLOWED_EXTENSIONS:
+            raise NameError
+        if not file_extension:
+            raise TypeError
+        if int(compression_ratio) < 0 or int(compression_ratio) > 9:
+            raise IndexError
+    except NameError:
+        return {"error": "file extension name not found"}, 404
+    except TypeError:
+        return {"error": "file extension no can he equal null. Review the query parameters"}, 400
+    except IndexError:
+        return {"error": "Compression rate not supported. Must be between 0 and 9"}, 400
+    else:
+        archive_zip = zip_path(file_extension,compression_ratio)
+
+        return send_file(archive_zip, as_attachment=True), 200
     
